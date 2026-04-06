@@ -5,6 +5,7 @@ import {
   queryPapers,
   getPaperByZoteroKey,
   createPaperPage,
+  archivePage,
   findConceptByName,
   createConceptPage,
   updateConceptDefinition,
@@ -104,42 +105,48 @@ export async function POST(request: Request) {
       methodIds,
     })
 
-    // Step 7: LLM Call 2 — Update concept definitions
-    for (const conceptName of [...analysis.conceptsUsed, ...analysis.newConcepts]) {
-      const concept = await findConceptByName(conceptName)
-      if (!concept) continue
+    try {
+      // Step 7: LLM Call 2 — Update concept definitions
+      for (const conceptName of [...analysis.conceptsUsed, ...analysis.newConcepts]) {
+        const concept = await findConceptByName(conceptName)
+        if (!concept) continue
 
-      const conceptData = existingConcepts.find((c: ConceptSummary) => c.name === conceptName)
-      const currentDef = conceptData?.definition ?? ""
+        const conceptData = existingConcepts.find((c: ConceptSummary) => c.name === conceptName)
+        const currentDef = conceptData?.definition ?? ""
 
-      const updatedDef = await llmCall(
-        CONCEPT_UPDATE_PROMPT,
-        JSON.stringify({
-          conceptName,
-          currentDefinition: currentDef,
-          newPaper: {
-            title: paper.title,
-            abstract: paper.abstract,
-            keyContribution: analysis.keyContribution,
-          },
-        })
-      )
-
-      await updateConceptDefinition(concept.id, updatedDef, paperPage.id)
-    }
-
-    // Step 8: Create contradiction entries if flagged
-    for (const contradiction of analysis.potentialContradictions) {
-      const otherPaperResults = await queryPapers({ title: contradiction.withPaper })
-      const otherPaper = otherPaperResults.results[0]
-      if (otherPaper) {
-        await createContradiction(
-          `${paper.title} vs ${contradiction.withPaper}: ${contradiction.on}`,
-          paperPage.id,
-          otherPaper.id,
-          contradiction.on
+        const updatedDef = await llmCall(
+          CONCEPT_UPDATE_PROMPT,
+          JSON.stringify({
+            conceptName,
+            currentDefinition: currentDef,
+            newPaper: {
+              title: paper.title,
+              abstract: paper.abstract,
+              keyContribution: analysis.keyContribution,
+            },
+          })
         )
+
+        await updateConceptDefinition(concept.id, updatedDef, paperPage.id)
       }
+
+      // Step 8: Create contradiction entries if flagged
+      for (const contradiction of analysis.potentialContradictions) {
+        const otherPaperResults = await queryPapers({ title: contradiction.withPaper })
+        const otherPaper = otherPaperResults.results[0]
+        if (otherPaper) {
+          await createContradiction(
+            `${paper.title} vs ${contradiction.withPaper}: ${contradiction.on}`,
+            paperPage.id,
+            otherPaper.id,
+            contradiction.on
+          )
+        }
+      }
+    } catch (postCreateError) {
+      // Roll back the paper page so no orphaned entry is left in Notion
+      await archivePage(paperPage.id).catch(() => {})
+      throw postCreateError
     }
 
     return NextResponse.json({

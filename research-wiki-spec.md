@@ -32,7 +32,7 @@ Zotero (source of truth)
 |---|---|---|
 | Framework | Next.js (App Router) | API routes + React frontend |
 | Deployment | Vercel | Free tier, zero config |
-| LLM | GitHub Copilot SDK | `@copilot-extensions/copilot-sdk` or `openai` SDK pointed at Copilot endpoint |
+| LLM | GitHub Copilot SDK | `@github/copilot-sdk` — official agentic runtime |
 | Paper source | Zotero Web API | Free, no PDF download needed |
 | Wiki storage | Notion API | Free, unlimited pages for personal workspace |
 | Auth | Zotero OAuth 2.0 + Notion OAuth | Both are free |
@@ -91,8 +91,9 @@ NOTION_METHODS_DB_ID=
 NOTION_CONTRADICTIONS_DB_ID=
 NOTION_SYNTHESIS_DB_ID=
 
-# GitHub Copilot
-GITHUB_COPILOT_TOKEN=       # Personal access token with Copilot scope
+# GitHub Copilot SDK — set ONE of these (or use `copilot` CLI login)
+GITHUB_TOKEN=               # Fine-grained PAT with Copilot scope
+# COPILOT_MODEL=gpt-4.1    # Optional: override default model
 ```
 
 ---
@@ -151,39 +152,39 @@ interface ZoteroPaper {
 
 ## GitHub Copilot SDK — LLM Calls
 
-GitHub Copilot exposes a chat completions endpoint compatible with the OpenAI SDK. Use it like this:
+Uses the official [`@github/copilot-sdk`](https://github.com/github/copilot-sdk) to interact with Copilot's agentic runtime via JSON-RPC. The SDK bundles and manages the Copilot CLI subprocess automatically.
 
 ```typescript
 // lib/copilot.ts
-import OpenAI from "openai"
+import { CopilotClient, approveAll } from "@github/copilot-sdk"
 
-const copilot = new OpenAI({
-  baseURL: "https://api.githubcopilot.com",
-  apiKey: process.env.GITHUB_COPILOT_TOKEN,
+// Singleton client — manages CLI process lifecycle
+const client = new CopilotClient({
+  githubToken: process.env.GITHUB_TOKEN,
 })
+await client.start()
 
+// One-shot completion
 export async function llmCall(systemPrompt: string, userMessage: string): Promise<string> {
-  const response = await copilot.chat.completions.create({
-    model: "gpt-4o",          // or "claude-3.5-sonnet" if available in your Copilot plan
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userMessage },
-    ],
-    max_tokens: 2000,
+  const session = await client.createSession({
+    model: "gpt-4.1",
+    onPermissionRequest: approveAll,
+    systemMessage: { mode: "replace", content: systemPrompt },
   })
-  return response.choices[0].message.content ?? ""
+  const response = await session.sendAndWait({ prompt: userMessage })
+  await session.disconnect()
+  return response?.data.content ?? ""
 }
 
 // Streaming version for chat UI
 export async function llmStream(systemPrompt: string, userMessage: string) {
-  return copilot.chat.completions.create({
-    model: "gpt-4o",
-    stream: true,
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userMessage },
-    ],
+  const session = await client.createSession({
+    model: "gpt-4.1",
+    streaming: true,
+    onPermissionRequest: approveAll,
+    systemMessage: { mode: "replace", content: systemPrompt },
   })
+  // Returns ReadableStream<string> using assistant.message_delta events
 }
 ```
 
@@ -409,5 +410,5 @@ ${context}
    - Create the 5 databases manually in Notion
    - Share each database with your integration (click ··· → Connections → your integration)
    - Copy each database ID from its URL: `notion.so/{workspace}/{DATABASE_ID}?v=...`
-3. **GitHub Copilot:** Go to GitHub Settings → Developer Settings → Personal Access Tokens → create token with `copilot` scope
+3. **GitHub Copilot:** Create a fine-grained PAT at github.com/settings/tokens with **GitHub Copilot → Read-only** permission, OR run `copilot auth login` for interactive auth, OR use BYOK (see README)
 4. **Vercel:** Connect GitHub repo → add all env vars in Vercel dashboard → deploy

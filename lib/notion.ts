@@ -31,6 +31,22 @@ function getRichText(props: AnyProps, field: string): string {
   return props[field]?.rich_text?.[0]?.plain_text ?? ""
 }
 
+/** Cache: databaseId → name of the title-type property */
+const _titlePropCache = new Map<string, string>()
+
+/** Returns the name of the title-type property for a given database. */
+async function getTitlePropertyName(databaseId: string): Promise<string> {
+  const cached = _titlePropCache.get(databaseId)
+  if (cached) return cached
+
+  const schema = await getNotion().databases.retrieve({ database_id: databaseId })
+  const props = schema.properties as AnyProps
+  const titleEntry = Object.entries(props).find(([, v]) => v.type === "title")
+  const name = titleEntry?.[0] ?? "Name"
+  _titlePropCache.set(databaseId, name)
+  return name
+}
+
 async function queryDB(
   databaseId: string,
   filter?: QueryDatabaseParameters["filter"],
@@ -61,10 +77,11 @@ export interface CreatePaperParams {
 }
 
 export async function createPaperPage(params: CreatePaperParams) {
+  const titleProp = await getTitlePropertyName(db().papers)
   return getNotion().pages.create({
     parent: { database_id: db().papers },
     properties: {
-      Title: { title: [{ text: { content: params.title } }] },
+      [titleProp]: { title: [{ text: { content: params.title } }] },
       Authors: { rich_text: [{ text: { content: params.authors } }] },
       Year: { number: params.year },
       Venue: { rich_text: [{ text: { content: params.venue } }] },
@@ -212,6 +229,12 @@ export async function createContradiction(
       Severity: { select: { name: "Minor" } },
     },
   })
+}
+
+// --- Page lifecycle ---
+
+export async function archivePage(pageId: string) {
+  return getNotion().pages.update({ page_id: pageId, archived: true })
 }
 
 // --- Search across all DBs ---
