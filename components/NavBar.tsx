@@ -7,6 +7,9 @@ const NAV_ITEMS = [
   { href: "/", label: "Dashboard" },
   { href: "/library", label: "Library" },
   { href: "/ingest", label: "Ingest" },
+  { href: "/chat", label: "Chat" },
+  { href: "/synthesis", label: "Synthesis" },
+  { href: "/wiki-health", label: "Health" },
 ]
 
 export default function NavBar() {

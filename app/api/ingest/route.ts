@@ -2,10 +2,12 @@ import { NextResponse } from "next/server"
 import { getItem, getItemAnnotations, itemToPaper } from "@/lib/zotero"
 import {
   listConcepts,
+  listPaperSummaries,
   queryPapers,
   getPaperByZoteroKey,
   createPaperPage,
   archivePage,
+  updateMethodUsedIn,
   findConceptByName,
   createConceptPage,
   updateConceptDefinition,
@@ -42,14 +44,10 @@ export async function POST(request: Request) {
     const paper = itemToPaper(item, annotations)
 
     // Step 2: Fetch existing Notion context
-    const [existingConcepts, existingPapersResult] = await Promise.all([
+    const [existingConcepts, existingPapers] = await Promise.all([
       listConcepts(),
-      queryPapers(),
+      listPaperSummaries(),
     ])
-
-    const existingPaperTitles = existingPapersResult.results.map((p: any) =>
-      p.properties?.Title?.title?.[0]?.plain_text ?? ""
-    )
 
     // Step 3: LLM Call 1 — Generate paper page content
     const userMessage = JSON.stringify({
@@ -63,7 +61,12 @@ export async function POST(request: Request) {
         annotations: paper.annotations,
       },
       existingConcepts: existingConcepts.map((c: ConceptSummary) => c.name),
-      existingPapers: existingPaperTitles,
+      existingPapers: existingPapers.map((p) => ({
+        title: p.title,
+        summary: p.abstractSummary,
+        contribution: p.keyContribution,
+        relevance: p.thesisRelevance,
+      })),
     })
 
     const analysis = await llmJSON<IngestLLMResult>(INGEST_SYSTEM_PROMPT, userMessage)
@@ -106,6 +109,11 @@ export async function POST(request: Request) {
     })
 
     try {
+      // Step 6b: Update method UsedIn back-links now that the paper page exists
+      for (const methodId of methodIds) {
+        await updateMethodUsedIn(methodId, paperPage.id)
+      }
+
       // Step 7: LLM Call 2 — Update concept definitions
       for (const conceptName of [...analysis.conceptsUsed, ...analysis.newConcepts]) {
         const concept = await findConceptByName(conceptName)
@@ -139,7 +147,8 @@ export async function POST(request: Request) {
             `${paper.title} vs ${contradiction.withPaper}: ${contradiction.on}`,
             paperPage.id,
             otherPaper.id,
-            contradiction.on
+            contradiction.on,
+            contradiction.severity ?? "Minor",
           )
         }
       }

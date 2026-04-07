@@ -15,11 +15,25 @@ const FEATURES = [
     icon: "⚙️",
   },
   {
-    title: "Chat (coming soon)",
+    title: "Chat",
     description:
       "Ask questions about your research. Answers are grounded in your wiki and cite papers by name.",
     href: "/chat",
     icon: "💬",
+  },
+  {
+    title: "Synthesis",
+    description:
+      "View thesis notes, generate literature review drafts, and run gap analyses powered by your wiki.",
+    href: "/synthesis",
+    icon: "✍️",
+  },
+  {
+    title: "Wiki Health",
+    description:
+      "Lint your research wiki for orphan concepts, missing definitions, unresolved contradictions, and stale entries.",
+    href: "/wiki-health",
+    icon: "🩺",
   },
 ]
 
@@ -36,7 +50,7 @@ export default function Home() {
         </p>
       </section>
 
-      <section className="grid gap-4 sm:grid-cols-3">
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {FEATURES.map((f) => (
           <Link
             key={f.href}
