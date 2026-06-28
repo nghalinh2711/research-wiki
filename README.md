@@ -2,6 +2,8 @@
 
 A Next.js app that reads your Zotero library, processes papers with an LLM via the [GitHub Copilot SDK](https://github.com/github/copilot-sdk), and builds a structured research wiki in Notion.
 
+Inspired by Andrej Karpathy's [LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) concept.
+
 **Topic:** Memory Management for AI Agents
 
 ## Architecture
